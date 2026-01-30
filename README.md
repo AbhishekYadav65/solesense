@@ -1,26 +1,36 @@
-# SoleSense — Backend Simulation Engine
+# SoleSense — Backend Simulation Engine (Refactored)
 
-## Overview
+## 1. Purpose & Positioning
 
-SoleSense Backend is a deterministic, explainable simulation engine that models how pressure distributes across a shoe sole, how that pressure evolves over time, how it translates into comfort degradation, and how it accumulates into material wear.
+SoleSense Backend is a **deterministic, explainable simulation engine** that models:
 
-This backend is intentionally **not**:
-- a medical system
-- a biomechanical model
-- a machine-learning predictor
+* how pressure distributes across a shoe sole
+* how that pressure evolves over time under different activities
+* how pressure behavior degrades comfort
+* how sustained pressure accumulates into material wear
 
-Instead, it is a transparent, trend-oriented simulation system designed for:
-- comparative analysis
-- explainability
-- interactive exploration
-- judge-proof reasoning
+This system is **intentionally not**:
 
-**All intelligence lives in the backend.**  
-The frontend is purely a visualization and interaction layer.
+* a medical diagnostic tool
+* a biomechanical or gait model
+* a real-world physics simulator
+* a machine learning predictor
+
+Instead, SoleSense is designed for:
+
+* **comparative reasoning**
+* **trend exploration**
+* **explainable cause–effect analysis**
+* **interactive visualization**
+
+> Accuracy is deliberately sacrificed for **clarity, determinism, and interpretability**.
+
+All intelligence lives in the backend.  
+The frontend is strictly a **presentation and interaction layer**.
 
 ---
 
-## High-Level Architecture
+## 2. High-Level Architecture
 
 ```
 backend/
@@ -35,222 +45,281 @@ backend/
 │   ├── scenario_compare.py
 │   ├── orchestrator.py
 │   └── constants.py
-├── utils/                  # Input validation & hygiene
-│   └── validators.py
-└── README.md               # This file
+├── utils/
+│   └── validators.py       # Input hygiene & safety
+└── README.md               # This document
 ```
 
-Separation of concerns is strict and intentional.
+**Separation of concerns is strict and enforced.**
+
+* `core/` contains *all* simulation logic
+* `utils/` protects the system from invalid inputs
+* `app.py` is a thin JSON boundary
+* No module performs another module's job
 
 ---
 
-## Execution Flow (End-to-End)
+## 3. End-to-End Execution Flow
 
-1. Client sends JSON input to `/simulate` or `/compare`
-2. Inputs are validated and normalized (`utils/validators.py`)
-3. Simulation is executed (`core/orchestrator.py`)
-4. Pressure → comfort → wear is computed deterministically
-5. Post-analysis classifies scenarios and alignment regimes
-6. Results are structured narratively in `app.py`
-7. NumPy data is serialized safely
-8. JSON response is returned to client
+1. Client sends JSON to `/simulate` or `/compare`
+2. Inputs are validated and sanitized (`utils/validators.py`)
+3. Inputs are normalized into abstract parameters (`normalization.py`)
+4. Initial pressure field is generated (`pressure_field.py`)
+5. Pressure evolves over time (`temporal_evolution.py`)
+6. Constraints enforce invariants every step (`constraints.py`)
+7. Comfort penalties are computed (`comfort_engine.py`)
+8. Wear accumulates monotonically (`wear_model.py`)
+9. Post-analysis classifies system behavior (`orchestrator.py`)
+10. Optional scenario comparison reasons about deltas (`scenario_compare.py`)
+11. Results are serialized and returned (`app.py`)
 
-**At no point does the frontend need to understand simulation logic.**
+At no point does the frontend need to understand simulation internals.
 
 ---
 
-## Core Module (Simulation Engine)
+## 4. Core Simulation Modules (`core/`)
 
-All actual intelligence lives in `core/`.
+### 4.1 `normalization.py`
 
-### normalization.py
+**Role:**  
+Convert raw user inputs into **bounded, dimensionless control parameters**.
 
-**Purpose:** Convert raw user inputs into normalized simulation parameters.
+**Key principles:**
 
-**Key responsibilities:**
-- Convert body weight → abstract load factor
-- Convert foot size → grid scaling
-- Convert stiffness & durability → simulation coefficients
-- Normalize categorical inputs into numeric modifiers
+* Core never sees raw user values
+* All outputs are normalized and bounded
+* No inference, no prediction, no guessing
 
-**Guarantee:**  
-Core never sees raw, unbounded user inputs.
+**Notable design choice — Activity Decomposition**
 
-### pressure_field.py
+Activities are decomposed into **three independent effects**:
 
-**Purpose:** Generate the initial 2D pressure grid.
+| Component            | Meaning                       |
+| -------------------- | ----------------------------- |
+| `activity_load`      | Scales total applied load     |
+| `activity_variation` | Controls temporal fluctuation |
+| `activity_wear_rate` | Scales wear accumulation      |
 
-**Key logic:**
-- Discretizes the sole into a fixed grid
-- Applies arch-type bias (flat / normal / high)
-- Applies heel–toe distribution
-- Produces a relative pressure map, not a real one
+This prevents hidden coupling and preserves explainability.
+
+---
+
+### 4.2 `pressure_field.py`
+
+**Role:**  
+Generate the **initial spatial pressure distribution**.
+
+**What it does:**
+
+* Discretizes the sole into a fixed 2D grid
+* Applies heel-to-toe distribution
+* Applies arch-type bias (flat / normal / high)
+* Shapes spread via contact capacity
+* Smooths deterministically based on sole stiffness
+
+**What it does not do:**
+
+* No anatomy modeling
+* No geometry deformation
+* No real pressure units
 
 **Output:**  
-2D NumPy array representing baseline pressure distribution
+A relative pressure field, not a physical one.
 
-### constraints.py
+---
 
-**Purpose:** Enforce hard physical invariants safely.
+### 4.3 `constraints.py`
 
-**Enforced guarantees:**
-- All pressure values are finite
-- All pressure values are bounded
-- Total force is conserved when representable
-- Graceful degradation when force exceeds grid capacity
+**Role:**  
+Enforce **hard invariants** safely and transparently.
+
+**Guaranteed invariants:**
+
+* All values are finite
+* All values are bounded
+* Force is conserved **when representable**
+* Graceful saturation when capacity is exceeded
 
 **Why this matters:**
-- Prevents numerical explosions
-- Prevents fake comfort or wear artifacts
-- Keeps simulation honest under extreme inputs
 
-### temporal_evolution.py
+* Prevents numerical explosions
+* Prevents false comfort or wear artifacts
+* Makes extreme inputs safe and explainable
 
-**Purpose:** Evolve pressure over time.
+Constraints never invent behavior — they only restrict it.
 
-**Key behavior:**
-- Introduces temporal smoothing
-- Adds activity-dependent variation (standing vs walking)
-- Prevents runaway oscillations
-- Maintains deterministic evolution
+---
 
-This is time-based simulation, not a static visualization.
+### 4.4 `temporal_evolution.py`
 
-### comfort_engine.py
+**Role:**  
+Evolve pressure fields **over time**.
 
-**Purpose:** Convert pressure behavior into comfort.
+**Key behaviors:**
 
-Comfort is penalty-based and explainable.
+* Deterministic heel-to-toe modulation
+* Activity-dependent temporal variation
+* Pressure inertia via relaxation
+* No randomness, no oscillatory chaos
+
+This module makes SoleSense a **simulation**, not a static heatmap.
+
+---
+
+### 4.5 `comfort_engine.py`
+
+**Role:**  
+Infer comfort from **pressure behavior**, not anatomy.
+
+Comfort is modeled as a **penalty system**, not a prediction.
 
 **Penalties include:**
-- Pressure peaks
-- High-pressure area
-- Left–right asymmetry
-- Zone bias
-- Temporal instability
-- Pressure persistence
 
-**Outputs:**
+* Peak pressure
+* High-pressure area
+* Heel–forefoot imbalance
+* Left–right asymmetry
+* Temporal volatility
+* Pressure persistence
+
+**Output:**
+
 ```json
 {
   "comfort_index": 0–100,
   "penalties": {
     "pressure_peak": ...,
     "high_pressure_area": ...,
-    ...
+    "zone_bias": ...,
+    "asymmetry": ...,
+    "temporal_variation": ...,
+    "pressure_persistence": ...
   }
 }
 ```
 
-No black boxes. Every comfort drop is explainable.
-
-### wear_model.py
-
-**Purpose:** Accumulate material wear over time.
-
-**Wear depends on:**
-- Pressure magnitude
-- Pressure persistence
-- Temporal repetition
-- Material durability factor
-
-**Key property:**
-- Wear is monotonic (never decreases)
-- Wear does not feed back into pressure or comfort
-
-This preserves causal clarity.
-
-### orchestrator.py
-
-**Purpose:** Coordinate the entire simulation lifecycle.
-
-**Responsibilities:**
-- Run full time-step simulation loop
-- Collect pressure, comfort, and wear histories
-- Perform post-analysis:
-  - stability classification
-  - dominant factor detection
-  - comfort–wear alignment regime
-- Expose two public entry points:
-  - `run_simulation`
-  - `run_scenario_comparison`
-
-This file is the governor of the system.
-
-### scenario_compare.py
-
-**Purpose:** Perform deep what-if comparison.
-
-**Capabilities:**
-- Numeric delta analysis
-- Mechanism attribution
-- Tradeoff detection
-- Decision verdict classification:
-  - strictly better
-  - tradeoff
-  - equivalent
-  - worse
-
-No new simulation is invented here.  
-It reasons only over existing outputs.
-
-### constants.py
-
-**Purpose:** Centralize all tunable constants.
-
-**Includes:**
-- Grid size
-- Pressure bounds
-- Comfort weights
-- Simulation step defaults
-
-This allows transparent tuning without logic changes.
+Every comfort change is directly explainable.
 
 ---
 
-## Utils Module (Input Hygiene)
+### 4.6 `wear_model.py`
 
-### validators.py
+**Role:**  
+Accumulate **material wear** deterministically.
 
-**Purpose:**
-- Protect the core from invalid inputs
-- Normalize enums
-- Enforce numeric bounds
-- Fail fast and explicitly
+**Wear depends on:**
 
-**Handled validations:**
-- Numeric ranges (weight, stiffness, durability, etc.)
-- Allowed enums (arch type, activity mode)
-- Required field presence
+* Pressure magnitude
+* Pressure persistence
+* Spatial extent
+* Activity wear rate
+* Material durability
 
-Core never validates inputs.  
+**Critical properties:**
+
+* Wear is monotonic (never decreases)
+* Wear does not feed back into pressure or comfort
+* No fatigue physics are assumed
+
+This preserves **causal clarity**.
+
+---
+
+### 4.7 `orchestrator.py`
+
+**Role:**  
+The **governor** of the entire system.
+
+**Responsibilities:**
+
+* Run full simulation loop
+* Coordinate pressure → comfort → wear
+* Collect histories
+* Perform post-analysis:
+  * stability classification
+  * dominant factor detection
+  * comfort–wear alignment regimes
+* Expose two entry points:
+  * `run_simulation`
+  * `run_scenario_comparison`
+
+No UI logic lives here.  
+No validation lives here.  
+Only coordination and reasoning.
+
+---
+
+### 4.8 `scenario_compare.py`
+
+**Role:**  
+Perform **what-if reasoning** between two simulations.
+
+**Capabilities:**
+
+* Outcome deltas
+* Mechanism attribution
+* Tradeoff detection
+* Decision verdicts:
+  * strictly_better
+  * tradeoff
+  * equivalent
+  * worse
+
+No new simulation is created here — it reasons only over outputs.
+
+---
+
+### 4.9 `constants.py`
+
+**Role:**  
+Centralize all tunable parameters.
+
+Includes:
+
+* Grid dimensions
+* Pressure bounds
+* Activity profiles
+* Comfort weights
+* Wear scaling
+* Default simulation length
+
+Changing constants never changes logic — only behavior scale.
+
+---
+
+## 5. Utils (`utils/validators.py`)
+
+**Role:**  
+Protect the core from invalid or ambiguous inputs.
+
+**Validations include:**
+
+* Required fields
+* Numeric bounds
+* Enum enforcement (arch type, activity)
+* Explicit error messages
+
+Core logic never validates inputs.  
 API never guesses user intent.
 
 ---
 
-## API Layer (app.py)
+## 6. API Layer (`app.py`)
 
-`app.py` is a pure JSON boundary.
+`app.py` is a **pure JSON boundary**.
 
 It contains:
-- No simulation logic
-- No interpretation logic
-- No assumptions
-- No defaults beyond safety
 
-### Responsibilities
+* No simulation logic
+* No inference
+* No hidden assumptions
 
-1. Receive JSON requests
-2. Validate inputs using `utils`
-3. Call orchestrator functions
-4. Build narrative responses
-5. Convert NumPy → JSON safely
+### Route: `POST /simulate`
 
-### Route: POST /simulate
+Runs a single simulation.
 
-**Purpose:** Run a single simulation scenario.
+**Input:**
 
-**Input JSON:**
 ```json
 {
   "body_weight": 70,
@@ -263,92 +332,280 @@ It contains:
 }
 ```
 
-**Output Structure:**
+**Output sections:**
+
+* `overview` → headline interpretation
+* `key_drivers` → causal explanation
+* `evidence` → numeric justification
+* `raw` → pressure & wear arrays for visualization
+
+**Frontend should read:**
+
+* `overview` → Display headline summary
+* `key_drivers` → Show explanation of what's driving the results
+* `evidence` → Present supporting numbers
+* `raw` → Render heatmaps and history graphs
+
+---
+
+### Route: `POST /compare`
+
+Runs a deterministic what-if comparison.
+
+**Input:**
+
 ```json
 {
-  "overview": { ... },
-  "key_drivers": { ... },
-  "evidence": { ... },
-  "raw": { ... }
-}
-```
-
-Frontend should read:
-- `overview` → headline
-- `key_drivers` → explanation
-- `evidence` → numbers
-- `raw` → heatmaps & history
-
-### Route: POST /compare
-
-**Purpose:** Compare two scenarios (what-if analysis).
-
-**Input JSON:**
-```json
-{
-  "baseline": { ...inputs... },
-  "variant": { ...inputs... },
+  "baseline": { ... },
+  "variant": { ... },
   "steps": 50
 }
 ```
 
 **Output:**
-- Baseline summary
-- Variant summary
-- Deep comparison reasoning
-- Decision verdict
-- Shared assumptions
 
-Frontend does not need to re-analyze anything.
+* Baseline summary
+* Variant summary
+* Mechanism-level comparison
+* Tradeoff classification
+* Explicit assumptions
+
+Frontend never needs to re-analyze anything.
 
 ---
 
-## Determinism & Guarantees
+## 7. Determinism & Guarantees
 
-- Same input → same output
-- No randomness
-- No ML
-- No hidden state
-- No time dependence outside simulation steps
+* Same input → same output
+* No randomness
+* No ML
+* No hidden state
+* No time dependence outside simulation steps
 
 This makes SoleSense:
-- testable
-- debuggable
-- judge-defensible
+
+* **testable** — Results are reproducible
+* **debuggable** — Behavior is traceable
+* **judge-defensible** — Logic is explainable
 
 ---
 
-## Assumptions & Limits (Explicit)
+## 8. Explicit Assumptions & Limits
 
-The backend explicitly exposes:
-- What is modeled
-- What is not modeled
-- Interpretation limits
-- Simplifications
+Returned in every response:
 
-These are returned in every simulation response.
+* What is modeled
+* What is not modeled
+* Interpretation limits
+* Simplifications
 
 **No hidden claims. No overreach.**
 
+The backend explicitly declares its boundaries and does not make medical, diagnostic, or prescriptive claims.
+
 ---
 
-## How to Build a Frontend Using Only This Backend
+## 9. How to Build a Frontend Using Only This Backend
 
-A frontend developer needs only to know:
+A frontend developer needs only to:
 
 1. Call `/simulate` or `/compare`
 2. Read `overview`, `key_drivers`, `evidence`
 3. Render `raw.final_pressure` as a heatmap
-4. Render `raw.wear_history[t]` with a time slider
+4. Animate `raw.wear_history[t]` over time
 
-**No backend code inspection required.**
+**Backend internals never need to be inspected.**
+
+The API is designed to be completely self-sufficient — no knowledge of Python, NumPy, or simulation logic is required.
 
 ---
 
-## Status
+## 10. Design Philosophy
 
-✅ Backend complete  
-✅ Hardened  
-✅ Explainable  
-✅ Judge-ready  
-✅ Frontend-agnostic
+### Why Deterministic?
+
+Determinism enables:
+
+* Reproducible testing
+* Comparative analysis
+* Explainable outputs
+* Trust in results
+
+### Why Not ML?
+
+Machine learning would:
+
+* Introduce opacity
+* Require training data we don't have
+* Make outputs non-explainable
+* Complicate validation
+
+### Why Penalty-Based Comfort?
+
+Penalty systems are:
+
+* Fully explainable
+* Tunable without retraining
+* Transparent to judges
+* Independent of user data
+
+### Why Separate Activity Effects?
+
+Decomposing activity into load, variation, and wear rate:
+
+* Prevents hidden coupling
+* Makes each effect independently understandable
+* Allows precise control
+* Enables clear explanations
+
+---
+
+## 11. Backend Status
+
+✅ **Complete** — All modules implemented  
+✅ **Refactored** — Clean architecture enforced  
+✅ **Activity-aware** — Multiple activity modes supported  
+✅ **Deterministic** — Reproducible results guaranteed  
+✅ **Explainable** — Every output is justified  
+✅ **Judge-ready** — Defensible and transparent  
+✅ **Frontend-agnostic** — Pure API design
+
+---
+
+## 12. Example Usage Workflow
+
+### Single Simulation
+
+```bash
+curl -X POST http://localhost:5000/simulate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "body_weight": 75,
+    "foot_size": 43,
+    "arch_type": "high",
+    "activity_mode": "running",
+    "sole_stiffness": 0.6,
+    "material_durability": 0.8,
+    "steps": 100
+  }'
+```
+
+**Frontend actions:**
+1. Parse `overview.headline` → show main finding
+2. Parse `key_drivers` → explain why
+3. Visualize `raw.final_pressure` → show pressure heatmap
+4. Plot `raw.comfort_history` → show comfort over time
+5. Plot `raw.wear_history` → show wear progression
+
+### Scenario Comparison
+
+```bash
+curl -X POST http://localhost:5000/compare \
+  -H "Content-Type: application/json" \
+  -d '{
+    "baseline": {
+      "body_weight": 70,
+      "foot_size": 42,
+      "arch_type": "normal",
+      "activity_mode": "walking",
+      "sole_stiffness": 0.5,
+      "material_durability": 0.5,
+      "steps": 50
+    },
+    "variant": {
+      "body_weight": 70,
+      "foot_size": 42,
+      "arch_type": "normal",
+      "activity_mode": "running",
+      "sole_stiffness": 0.5,
+      "material_durability": 0.5,
+      "steps": 50
+    }
+  }'
+```
+
+**Frontend actions:**
+1. Show baseline vs variant side-by-side
+2. Display delta analysis
+3. Highlight tradeoffs
+4. Show decision verdict
+
+---
+
+## 13. Validation & Error Handling
+
+The backend validates all inputs and returns clear error messages:
+
+**Invalid arch type:**
+```json
+{
+  "error": "Invalid arch_type. Must be one of: flat, normal, high"
+}
+```
+
+**Out of range value:**
+```json
+{
+  "error": "body_weight must be between 30 and 200"
+}
+```
+
+**Missing required field:**
+```json
+{
+  "error": "Missing required field: activity_mode"
+}
+```
+
+All validation happens before simulation begins, ensuring fast failure.
+
+---
+
+## 14. Future Extensions (Potential)
+
+While the current system is complete, potential extensions could include:
+
+* Additional activity modes (hiking, jumping, etc.)
+* More arch type variations
+* Temperature effects on material properties
+* Multi-material sole compositions
+* Custom pressure distribution patterns
+
+All extensions would maintain the core principles:
+* Deterministic
+* Explainable
+* No ML
+* No medical claims
+
+---
+
+## 15. Testing & Validation
+
+The backend can be validated through:
+
+1. **Determinism tests** — Same input always produces same output
+2. **Bounds tests** — All outputs stay within valid ranges
+3. **Conservation tests** — Force is preserved across transformations
+4. **Monotonicity tests** — Wear never decreases
+5. **Comparison tests** — Delta analysis is self-consistent
+
+No statistical testing is required because the system is deterministic.
+
+---
+
+## 16. Summary
+
+SoleSense Backend is a **complete, production-ready simulation engine** that:
+
+* Models pressure, comfort, and wear deterministically
+* Provides explainable, judge-defensible outputs
+* Requires zero backend knowledge to use
+* Makes no medical or prescriptive claims
+* Supports comparative analysis and what-if scenarios
+
+**The frontend's only job is to visualize and interact with these results.**
+
+---
+
+*Last updated: January 2026*  
+*Version: 2.0 (Refactored)*
